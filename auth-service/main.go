@@ -2,25 +2,24 @@ package main
 
 import (
     "context"
-    "fmt"
     "os"
-    "time"
+    "github.com/gin-gonic/gin"
     "go.mongodb.org/mongo-driver/mongo"
     "go.mongodb.org/mongo-driver/mongo/options"
+
+    "auth-service/internal/handler"
+    "auth-service/internal/repository"
+    "auth-service/internal/middleware"
 )
 
 func main() {
     mongoUri := os.Getenv("MONGO_URI")
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
-    client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoUri))
-    if err != nil {
-        panic(fmt.Sprintf("auth-service: Failed to connect to MongoDB: %v", err))
-    }
-    err = client.Ping(ctx, nil)
-    if err != nil {
-        panic(fmt.Sprintf("auth-service: MongoDB not reachable: %v", err))
-    }
-    fmt.Println(" [auth-service] Connected to MongoDB successfully!")
-    select {}
+    client, _ := mongo.Connect(context.Background(), options.Client().ApplyURI(mongoUri))
+    db := client.Database("authdb")
+    repo := repository.NewUserRepository(db)
+
+    r := gin.Default()
+    r.POST("/register", handler.Register(repo))
+    
+    r.Run(":8081")
 }
