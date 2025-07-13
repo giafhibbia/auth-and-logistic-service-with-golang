@@ -1,0 +1,66 @@
+version: '3.8'
+services:
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    ports:
+      - "27017:27017"
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: master
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: masterdb
+    ports:
+      - "5432:5432"
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - JWT_SECRET=SUPERSECRET
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - mongo
+      - rabbitmq
+
+  logistic-service:
+    build:
+      context: ./logistic-service
+      dockerfile: Dockerfile
+    container_name: logistic-service
+    ports:
+      - "8082:8082"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - JWT_SECRET=SUPERSECRET
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - mongo
+      - rabbitmq
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: worker
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - MASTERDB_URL=postgres://master:password@postgres:5432/masterdb?sslmode=disable
+    depends_on:
+      - rabbitmq
+      - postgres
