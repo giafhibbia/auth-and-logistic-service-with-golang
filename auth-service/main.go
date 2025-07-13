@@ -20,6 +20,6 @@ func main() {
 
     r := gin.Default()
     r.POST("/register", handler.Register(repo))
-    
+    r.POST("/login", handler.Login(repo))
     r.Run(":8081")
 }

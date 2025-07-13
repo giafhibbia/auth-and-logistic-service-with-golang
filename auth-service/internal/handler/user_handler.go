@@ -58,3 +58,25 @@ func Register(repo *repository.UserRepository) gin.HandlerFunc {
 		c.JSON(http.StatusCreated, gin.H{"message": "user registered"})
 	}
 }
+
+type LoginRequest struct {
+	Msisdn   string `json:"msisdn" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+func Login(repo *repository.UserRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req LoginRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		user, err := repo.FindByMsisdn(req.Msisdn)
+		if err != nil || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+			return
+		}
+		token, _ := service.GenerateJWT(user)
+		c.JSON(http.StatusOK, gin.H{"token": token})
+	}
+}
+
