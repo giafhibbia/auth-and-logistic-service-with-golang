@@ -1,0 +1,269 @@
+openapi: 3.0.0
+info:
+  title: Orderfaz API Docs
+  version: 1.0.0
+  description: Gabungan Auth Service & Logistic Service
+
+servers:
+  - url: http://localhost:8081
+    description: Auth Service
+  - url: http://localhost:8082
+    description: Logistic Service
+
+paths:
+  # AUTH SERVICE
+  /register:
+    post:
+      tags: [Auth]
+      summary: Register user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Register'
+            example:
+              msisdn: "628123456789"
+              name: "Zaenal Muttaqien"
+              username: "zaenal"
+              password: "SuperSecret123!"
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: user registered
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: username exists
+
+  /login:
+    post:
+      tags: [Auth]
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Login'
+            example:
+              msisdn: "628123456789"
+              password: "SuperSecret123!"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: invalid credentials
+
+  /profile:
+    get:
+      tags: [Auth]
+      summary: Get JWT claims
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  exp: 1752482029
+                  msisdn: "628123456789"
+                  user_id: "e321112d-56c8-41e0-b6b6-dbb9edb0e314"
+                  username: "zaenal"
+        '401':
+          description: Invalid token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: invalid JWT
+
+  # LOGISTIC SERVICE (contoh)
+  /logistics:
+    post:
+      tags: [Logistic]
+      summary: Create logistic data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogisticInput'
+            example:
+              tracking_number: "JNE123456789"
+              vendor: "JNE"
+              status: "on_process"
+              origin: "Jakarta Warehouse"
+              destination: "Bandung, Jawa Barat"
+              recipient:
+                name: "Ahmad N"
+                phone: "6285212345678"
+                address: "Jl. Merdeka No.1, Bandung"
+              items:
+                - name: "Sepatu Running"
+                  qty: 2
+                  weight: 1.2
+                - name: "Kaos Olahraga"
+                  qty: 1
+                  weight: 0.5
+              notes: "Handle with care, insured"
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    example: "c98416e1-3943-4e62-8e6b-ef08489f2c1b"
+                  status:
+                    type: string
+                    example: on_process
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: tracking number already exists
+
+    get:
+      tags: [Logistic]
+      summary: List logistics
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogisticInput'
+              example:
+                - tracking_number: "JNE123456789"
+                  vendor: "JNE"
+                  status: "delivered"
+                  origin: "Jakarta Warehouse"
+                  destination: "Bandung, Jawa Barat"
+                  recipient:
+                    name: "Ahmad N"
+                    phone: "6285212345678"
+                    address: "Jl. Merdeka No.1, Bandung"
+                  items:
+                    - name: "Sepatu Running"
+                      qty: 2
+                      weight: 1.2
+                    - name: "Kaos Olahraga"
+                      qty: 1
+                      weight: 0.5
+                  notes: "Handle with care, insured"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Register:
+      type: object
+      required: [msisdn, name, username, password]
+      properties:
+        msisdn:
+          type: string
+        name:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+
+    Login:
+      type: object
+      required: [msisdn, password]
+      properties:
+        msisdn:
+          type: string
+        password:
+          type: string
+
+    LogisticInput:
+      type: object
+      required: [tracking_number, vendor, status, origin, destination, recipient, items]
+      properties:
+        tracking_number:
+          type: string
+        vendor:
+          type: string
+        status:
+          type: string
+          enum: [on_process, delivered, cancelled]
+        origin:
+          type: string
+        destination:
+          type: string
+        recipient:
+          type: object
+          properties:
+            name:
+              type: string
+            phone:
+              type: string
+            address:
+              type: string
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              qty:
+                type: integer
+              weight:
+                type: number
+                format: float
+        notes:
+          type: string
+

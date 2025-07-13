@@ -1,0 +1,50 @@
+openapi: 3.0.0
+info:
+  title: Minimal Register API
+  version: "1.0.0"
+
+paths:
+  /register:
+    post:
+      summary: Register user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                msisdn:
+                  type: string
+                name:
+                  type: string
+                username:
+                  type: string
+                password:
+                  type: string
+            example:
+              msisdn: "628123456789"
+              name: "Zaenal"
+              username: "zaenal"
+              password: "secret"
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: user registered
+        '400':
+          description: Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: username exists

@@ -5,6 +5,8 @@ services:
     container_name: mongo
     ports:
       - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
 
   postgres:
     image: postgres:16
@@ -15,6 +17,8 @@ services:
       POSTGRES_DB: masterdb
     ports:
       - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -64,3 +68,22 @@ services:
     depends_on:
       - rabbitmq
       - postgres
+    restart: unless-stopped
+  
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    container_name: swagger-ui
+    ports:
+      - "8083:8080"
+    environment:
+      - SWAGGER_JSON=/foo/swagger.yaml
+    volumes:
+      - ./api-docs:/foo
+    depends_on:
+      - auth-service
+      - logistic-service
+  
+
+volumes:
+  mongo-data:
+  postgres-data:
