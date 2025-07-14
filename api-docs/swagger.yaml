@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Orderfaz API Docs
   version: 1.0.0
-  description: Gabungan Auth Service & Logistic Service
+  description: Combined Auth Service & Logistic Service
 
 servers:
   - url: http://localhost:8081
@@ -87,7 +87,7 @@ paths:
   /profile:
     get:
       tags: [Auth]
-      summary: Get JWT claims
+      summary: Get JWT claims (user profile)
       security:
         - bearerAuth: []
       responses:
@@ -113,33 +113,42 @@ paths:
                     type: string
                     example: invalid JWT
 
-  # LOGISTIC SERVICE (contoh)
-  /logistics:
+  # LOGISTIC SERVICE - semua endpoint di baseURL http://localhost:8082
+  /shipments:
     post:
       tags: [Logistic]
-      summary: Create logistic data
+      summary: Create shipment
+      security:
+        - bearerAuth: []
+      servers:
+        - url: http://localhost:8082
+          description: Logistic Service
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LogisticInput'
+              $ref: '#/components/schemas/ShipmentInput'
             example:
               tracking_number: "JNE123456789"
-              vendor: "JNE"
+              logistic_name: "JNE"
               status: "on_process"
               origin: "Jakarta Warehouse"
               destination: "Bandung, Jawa Barat"
-              recipient:
+              sender:
                 name: "Ahmad N"
                 phone: "6285212345678"
                 address: "Jl. Merdeka No.1, Bandung"
+              recipient:
+                name: "Budi"
+                phone: "08987654321"
+                address: "Jl. Sudirman No.10, Bandung"
               items:
                 - name: "Sepatu Running"
-                  qty: 2
+                  quantity: 2
                   weight: 1.2
                 - name: "Kaos Olahraga"
-                  qty: 1
+                  quantity: 1
                   weight: 0.5
               notes: "Handle with care, insured"
       responses:
@@ -148,14 +157,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    example: "c98416e1-3943-4e62-8e6b-ef08489f2c1b"
-                  status:
-                    type: string
-                    example: on_process
+                $ref: '#/components/schemas/Shipment'
         '400':
           description: Error
           content:
@@ -169,7 +171,12 @@ paths:
 
     get:
       tags: [Logistic]
-      summary: List logistics
+      summary: Get all shipments for the logged-in user
+      security:
+        - bearerAuth: []
+      servers:
+        - url: http://localhost:8082
+          description: Logistic Service
       responses:
         '200':
           description: OK
@@ -178,25 +185,111 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/LogisticInput'
-              example:
-                - tracking_number: "JNE123456789"
-                  vendor: "JNE"
-                  status: "delivered"
-                  origin: "Jakarta Warehouse"
-                  destination: "Bandung, Jawa Barat"
-                  recipient:
-                    name: "Ahmad N"
-                    phone: "6285212345678"
-                    address: "Jl. Merdeka No.1, Bandung"
-                  items:
-                    - name: "Sepatu Running"
-                      qty: 2
-                      weight: 1.2
-                    - name: "Kaos Olahraga"
-                      qty: 1
-                      weight: 0.5
-                  notes: "Handle with care, insured"
+                  $ref: '#/components/schemas/Shipment'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: invalid or expired JWT
+
+  /shipments/{trackingNumber}:
+    get:
+      tags: [Logistic]
+      summary: Get shipment details by tracking number
+      security:
+        - bearerAuth: []
+      servers:
+        - url: http://localhost:8082
+          description: Logistic Service
+      parameters:
+        - name: trackingNumber
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Tracking number of the shipment
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shipment'
+        '404':
+          description: Shipment not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: shipment not found
+
+  /shipments/{trackingNumber}/status:
+    patch:
+      tags: [Logistic]
+      summary: Update shipment status by tracking number
+      security:
+        - bearerAuth: []
+      servers:
+        - url: http://localhost:8082
+          description: Logistic Service
+      parameters:
+        - name: trackingNumber
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Tracking number of the shipment to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [on_process, delivered, cancelled]
+      responses:
+        '200':
+          description: Status updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: status updated
+        '400':
+          description: Bad request (e.g. missing status)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: status is required
+        '404':
+          description: Shipment not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: shipment not found
 
 components:
   securitySchemes:
@@ -208,7 +301,11 @@ components:
   schemas:
     Register:
       type: object
-      required: [msisdn, name, username, password]
+      required:
+        - msisdn
+        - name
+        - username
+        - password
       properties:
         msisdn:
           type: string
@@ -221,30 +318,71 @@ components:
 
     Login:
       type: object
-      required: [msisdn, password]
+      required:
+        - msisdn
+        - password
       properties:
         msisdn:
           type: string
         password:
           type: string
 
-    LogisticInput:
+    ShipmentItem:
       type: object
-      required: [tracking_number, vendor, status, origin, destination, recipient, items]
+      properties:
+        name:
+          type: string
+        quantity:
+          type: integer
+        weight:
+          type: number
+          format: float
+
+    ShipmentInput:
+      type: object
+      required:
+        - tracking_number
+        - logistic_name
+        - status
+        - origin
+        - destination
+        - sender
+        - recipient
+        - items
       properties:
         tracking_number:
           type: string
-        vendor:
+        logistic_name:
           type: string
         status:
           type: string
-          enum: [on_process, delivered, cancelled]
+          enum:
+            - on_process
+            - delivered
+            - cancelled
         origin:
           type: string
         destination:
           type: string
+        sender:
+          type: object
+          required:
+            - name
+            - phone
+            - address
+          properties:
+            name:
+              type: string
+            phone:
+              type: string
+            address:
+              type: string
         recipient:
           type: object
+          required:
+            - name
+            - phone
+            - address
           properties:
             name:
               type: string
@@ -255,15 +393,20 @@ components:
         items:
           type: array
           items:
-            type: object
-            properties:
-              name:
-                type: string
-              qty:
-                type: integer
-              weight:
-                type: number
-                format: float
+            $ref: '#/components/schemas/ShipmentItem'
         notes:
           type: string
 
+    Shipment:
+      allOf:
+        - $ref: '#/components/schemas/ShipmentInput'
+        - type: object
+          properties:
+            id:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
