@@ -8,6 +8,7 @@ import (
 	"auth-service/internal/model"
 )
 
+
 type UserRepository struct{ col *mongo.Collection }
 
 func NewUserRepository(db *mongo.Database) *UserRepository {

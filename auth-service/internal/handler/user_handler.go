@@ -107,11 +107,16 @@ func Login(repo *repository.UserRepository) gin.HandlerFunc {
             c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
             return
         }
-        // JWT: hanya id dari database (UUID) di private claim
-        token, _ := service.GenerateJWT(user.ID)
+        // Kirim objek user, bukan user.ID
+        token, err := service.GenerateJWT(user)
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+            return
+        }
         c.JSON(http.StatusOK, gin.H{"token": token})
     }
 }
+
 
 func Profile() gin.HandlerFunc {
     return func(c *gin.Context) {
