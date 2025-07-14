@@ -92,15 +92,18 @@ func (r *ShipmentRepository) FindByUserID(userID string) ([]*model.Shipment, err
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	filter := bson.M{"user_id": userID}
+	// Filter query MongoDB dengan user_id
+	filter := bson.M{"userid": userID}
+
+	// Cari semua dokumen shipment dengan user_id tersebut
 	cursor, err := r.col.Find(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
 
+	// Decode hasil cursor ke slice hasil []*model.Shipment
 	var results []*model.Shipment
 	err = cursor.All(ctx, &results)
 	return results, err
 }
-
 

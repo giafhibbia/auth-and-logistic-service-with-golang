@@ -165,15 +165,21 @@ func UpdateShipmentStatus(repo *repository.ShipmentRepository, ch *amqp.Channel)
 
 
 
-// TrackShipment handles GET /shipments/:trackingNumber to get shipment details by tracking number
+// TrackShipment handles GET /shipments/:trackingNumber
 func TrackShipment(repo *repository.ShipmentRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		trackingNumber := c.Param("trackingNumber")
+
 		shipment, err := repo.FindByTrackingNumber(trackingNumber)
 		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch shipment"})
+			return
+		}
+		if shipment == nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "shipment not found"})
 			return
 		}
+
 		c.JSON(http.StatusOK, shipment)
 	}
 }
@@ -181,27 +187,35 @@ func TrackShipment(repo *repository.ShipmentRepository) gin.HandlerFunc {
 // GetShipments handles GET /shipments to fetch all shipments for logged-in user
 func GetShipments(repo *repository.ShipmentRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Ambil claim JWT yang sudah disimpan oleh middleware JWTAuthMiddleware
 		claimsRaw, exists := c.Get("claims")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
+
+		// Casting claim ke tipe jwt.MapClaims
 		claims, ok := claimsRaw.(jwt.MapClaims)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
 			return
 		}
+
+		// Ambil user_id dari claim
 		userID, ok := claims["user_id"].(string)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user_id in claims"})
 			return
 		}
 
+		// Query MongoDB untuk mendapatkan shipment yang terkait dengan user_id ini
 		shipments, err := repo.FindByUserID(userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch shipments"})
 			return
 		}
+
+		// Kirimkan response JSON berisi list shipment
 		c.JSON(http.StatusOK, shipments)
 	}
 }
