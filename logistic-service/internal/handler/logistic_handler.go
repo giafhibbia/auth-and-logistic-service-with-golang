@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	jwt "github.com/golang-jwt/jwt/v5"
-	"os"
     "log"
     "encoding/json"
     amqp "github.com/rabbitmq/amqp091-go"
@@ -37,7 +36,8 @@ func GetCourierRates(repo *repository.ShipmentRepository) gin.HandlerFunc {
 	}
 }
 
-func CreateShipment(repo *repository.ShipmentRepository) gin.HandlerFunc {
+// CreateShipment menerima channel RabbitMQ sebagai argumen tambahan
+func CreateShipment(repo *repository.ShipmentRepository, ch *amqp.Channel) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input model.Shipment
 
@@ -74,18 +74,11 @@ func CreateShipment(repo *repository.ShipmentRepository) gin.HandlerFunc {
 			return
 		}
 
-		// Debug print seluruh claims
-		log.Printf("[DEBUG] Claims: %+v\n", claims)
-
-		// Ambil user_id dari claim
 		userID, ok := claims["user_id"].(string)
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user_id in claims"})
 			return
 		}
-
-		// Debug print userID
-		log.Printf("[DEBUG] userID from claims: %s\n", userID)
 
 		input.UserID = userID
 
@@ -94,51 +87,34 @@ func CreateShipment(repo *repository.ShipmentRepository) gin.HandlerFunc {
 			return
 		}
 
-		// Publish event ke RabbitMQ (optional)
-		rabbitURL := os.Getenv("RABBITMQ_URL")
-		conn, err := amqp.Dial(rabbitURL)
+		// Publish ke RabbitMQ pakai channel yang sudah ada
+		body, err := json.Marshal(input)
 		if err != nil {
-			log.Println("[CreateShipment] RabbitMQ connection error:", err)
+			log.Printf("[CreateShipment] Marshal shipment error: %v", err)
 		} else {
-			defer conn.Close()
-			ch, err := conn.Channel()
+			err = ch.Publish(
+				"",
+				"shipment.created",
+				false,
+				false,
+				amqp.Publishing{
+					ContentType: "application/json",
+					Body:        body,
+				},
+			)
 			if err != nil {
-				log.Println("[CreateShipment] RabbitMQ channel error:", err)
+				log.Printf("[CreateShipment] RabbitMQ publish error: %v", err)
 			} else {
-				defer ch.Close()
-				body, err := json.Marshal(input)
-				if err != nil {
-					log.Println("[CreateShipment] Marshal shipment to JSON error:", err)
-				} else {
-					err = ch.Publish(
-						"",
-						"shipment.created",
-						false,
-						false,
-						amqp.Publishing{
-							ContentType: "application/json",
-							Body:        body,
-						},
-					)
-					if err != nil {
-						log.Println("[CreateShipment] RabbitMQ publish error:", err)
-					} else {
-						log.Println("[CreateShipment] RabbitMQ publish OK (shipment.created)")
-					}
-				}
+				log.Printf("[CreateShipment] Published shipment.created for tracking number: %s", input.TrackingNumber)
 			}
 		}
 
-		// Response sukses dengan data shipment yang baru dibuat
 		c.JSON(http.StatusCreated, input)
 	}
 }
 
-
-
-
-// UpdateShipmentStatus handles PATCH /shipments/:trackingNumber/status to update shipment status
-func UpdateShipmentStatus(repo *repository.ShipmentRepository) gin.HandlerFunc {
+// UpdateShipmentStatus menerima channel RabbitMQ sebagai argumen tambahan
+func UpdateShipmentStatus(repo *repository.ShipmentRepository, ch *amqp.Channel) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		trackingNumber := c.Param("trackingNumber")
 		var req struct {
@@ -149,13 +125,45 @@ func UpdateShipmentStatus(repo *repository.ShipmentRepository) gin.HandlerFunc {
 			return
 		}
 
-		if err := repo.UpdateStatus(trackingNumber, req.Status); err != nil {
+		err := repo.UpdateStatus(trackingNumber, req.Status)
+		if err != nil {
+			log.Printf("UpdateStatus error: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update status"})
 			return
 		}
+
+
+		shipment, err := repo.FindByTrackingNumber(trackingNumber)
+		if err != nil || shipment == nil {
+			log.Printf("[UpdateShipmentStatus] Warning: failed to find shipment after update: %v", err)
+		} else {
+			body, err := json.Marshal(shipment)
+			if err != nil {
+				log.Printf("[UpdateShipmentStatus] Marshal shipment error: %v", err)
+			} else {
+				err = ch.Publish(
+					"",
+					"shipment.updated",
+					false,
+					false,
+					amqp.Publishing{
+						ContentType: "application/json",
+						Body:        body,
+					},
+				)
+				if err != nil {
+					log.Printf("[UpdateShipmentStatus] RabbitMQ publish error: %v", err)
+				} else {
+					log.Printf("[UpdateShipmentStatus] Published shipment.updated for tracking number: %s", trackingNumber)
+				}
+			}
+		}
+
 		c.JSON(http.StatusOK, gin.H{"message": "status updated"})
 	}
 }
+
+
 
 // TrackShipment handles GET /shipments/:trackingNumber to get shipment details by tracking number
 func TrackShipment(repo *repository.ShipmentRepository) gin.HandlerFunc {

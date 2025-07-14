@@ -34,17 +34,29 @@ func (r *ShipmentRepository) UpdateStatus(trackingNumber string, status string) 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	filter := bson.M{"tracking_number": trackingNumber}
-	update := bson.M{
-		"$set": bson.M{
-			"status":     status,
-			"updated_at": time.Now().Unix(),
-		},
+	// First find the shipment
+	var shipment model.Shipment
+	err := r.col.FindOne(ctx, bson.M{"trackingnumber": trackingNumber}).Decode(&shipment)
+	if err != nil {
+		return err
 	}
 
-	_, err := r.col.UpdateOne(ctx, filter, update)
+	// Copy nested to flat fields before update
+	updateFields := bson.M{
+		"status":          status,
+		"updated_at":      time.Now().Unix(),
+		"sendername":      shipment.Sender.Name,
+		"senderphone":     shipment.Sender.Phone,
+		"senderaddress":   shipment.Sender.Address,
+		"recipientname":   shipment.Recipient.Name,
+		"recipientphone":  shipment.Recipient.Phone,
+		"recipientaddress": shipment.Recipient.Address,
+	}
+
+	_, err = r.col.UpdateOne(ctx, bson.M{"trackingnumber": trackingNumber}, bson.M{"$set": updateFields})
 	return err
 }
+
 
 // FindByTrackingNumber retrieves a shipment document by its tracking number.
 // Returns (nil, nil) if shipment not found.
@@ -53,7 +65,7 @@ func (r *ShipmentRepository) FindByTrackingNumber(trackingNumber string) (*model
 	defer cancel()
 
 	var shipment model.Shipment
-	err := r.col.FindOne(ctx, bson.M{"tracking_number": trackingNumber}).Decode(&shipment)
+	err := r.col.FindOne(ctx, bson.M{"trackingnumber": trackingNumber}).Decode(&shipment)
 	if err == mongo.ErrNoDocuments {
 		return nil, nil // Tidak ditemukan
 	}
@@ -91,19 +103,4 @@ func (r *ShipmentRepository) FindByUserID(userID string) ([]*model.Shipment, err
 	return results, err
 }
 
-// UpdateShipmentItems replaces the items array in the shipment document identified by trackingNumber
-func (r *ShipmentRepository) UpdateShipmentItems(trackingNumber string, items []model.ShipmentItem) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
-	filter := bson.M{"tracking_number": trackingNumber}
-	update := bson.M{
-		"$set": bson.M{
-			"items":      items,
-			"updated_at": time.Now().Unix(),
-		},
-	}
-
-	_, err := r.col.UpdateOne(ctx, filter, update)
-	return err
-}

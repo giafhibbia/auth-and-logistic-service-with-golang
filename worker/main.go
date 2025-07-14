@@ -12,83 +12,69 @@ import (
 	"gorm.io/gorm"
 )
 
-// User represents the user model mapped to the database table for storing user data
+// User represents user model in Postgres
 type User struct {
-	ID         int       `gorm:"primaryKey;autoIncrement" json:"-"` // Primary key, auto increment, hidden in JSON
-	ExternalID string    `json:"id"`                                // UUID coming from RabbitMQ or other microservice
-	Msisdn     string    `json:"msisdn"`                            // User's phone number
-	Name       string    `json:"name"`                              // User's full name
-	Username   string    `json:"username"`                          // User's username
-	CreatedAt  time.Time `json:"created_at"`                       // Timestamp when the user was created
+	ID         int       `gorm:"primaryKey;autoIncrement" json:"-"`
+	ExternalID string    `json:"id"`
+	Msisdn     string    `json:"msisdn"`
+	Name       string    `json:"name"`
+	Username   string    `json:"username"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
-// Logistic represents the logistic (courier) information
-type Logistic struct {
-	ID              string    `gorm:"primaryKey"`       // Primary key ID for logistic company
-	LogisticName    string                              // Name of logistic company
-	Amount          int                                 // Price or amount for the service
-	DestinationName string                              // Destination location name
-	OriginName      string                              // Origin location name
-	Duration        string                              // Estimated delivery duration
-	CreatedAt       time.Time                           // Timestamp of record creation
-}
-
-// ShipmentItem represents a single item within a shipment order
+// ShipmentItem represents a shipment item in Postgres
 type ShipmentItem struct {
-	ID         uint    `gorm:"primaryKey;autoIncrement"`          // Primary key, auto increment
-	ShipmentID string  `gorm:"index;not null"`                    // Foreign key to Shipment.ID, indexed and required
-	Name       string                              // Item name
-	Quantity   int                                 // Quantity of the item
-	Weight     float64                             // Weight per item (kg)
+	ID         uint   `gorm:"primaryKey;autoIncrement"`
+	ShipmentID string `gorm:"index;not null"`
+	Name       string
+	Quantity   int
+	Weight     float64
 }
 
-// Shipment represents the main shipment order data including metadata and nested items
+// Shipment represents shipment model with related items
 type Shipment struct {
-	ID               string         `gorm:"primaryKey;column:id" json:"id"`                    // UUID, primary key
-	LogisticName     string         `gorm:"column:logistic_name" json:"logistic_name"`         // Name of the logistic company
-	TrackingNumber   string         `gorm:"column:tracking_number" json:"tracking_number"`     // Unique tracking number
-	Status           string         `gorm:"column:status" json:"status"`                        // Shipment status
-	Origin           string         `gorm:"column:origin" json:"origin"`                        // Origin location
-	Destination      string         `gorm:"column:destination" json:"destination"`             // Destination location
-	Notes            string         `gorm:"column:notes" json:"notes"`                          // Optional notes for shipment
-	UserID           string         `gorm:"column:user_id" json:"user_id"`                      // User ID of the creator (indexed)
-	CreatedAt        time.Time      `gorm:"column:created_at" json:"created_at"`                // Created timestamp
-	UpdatedAt        time.Time      `gorm:"column:updated_at" json:"updated_at"`                // Last updated timestamp
-	SenderName       string         `gorm:"column:sender_name" json:"sender_name"`              // Sender's name
-	SenderPhone      string         `gorm:"column:sender_phone" json:"sender_phone"`            // Sender's phone number
-	SenderAddress    string         `gorm:"column:sender_address" json:"sender_address"`        // Sender's address
-	RecipientName    string         `gorm:"column:recipient_name" json:"recipient_name"`        // Recipient's name
-	RecipientPhone   string         `gorm:"column:recipient_phone" json:"recipient_phone"`      // Recipient's phone number
-	RecipientAddress string         `gorm:"column:recipient_address" json:"recipient_address"`  // Recipient's address
-	Items            []ShipmentItem `gorm:"foreignKey:ShipmentID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"items"` // Shipment items with cascading update/delete
+	ID               string         `gorm:"primaryKey;column:id" json:"id"`
+	LogisticName     string         `gorm:"column:logistic_name" json:"logistic_name"`
+	TrackingNumber   string         `gorm:"column:tracking_number" json:"tracking_number"`
+	Status           string         `gorm:"column:status" json:"status"`
+	Origin           string         `gorm:"column:origin" json:"origin"`
+	Destination      string         `gorm:"column:destination" json:"destination"`
+	Notes            string         `gorm:"column:notes" json:"notes"`
+	UserID           string         `gorm:"column:user_id" json:"user_id"`
+	CreatedAt        time.Time      `gorm:"column:created_at" json:"created_at"`
+	UpdatedAt        time.Time      `gorm:"column:updated_at" json:"updated_at"`
+	SenderName       string         `gorm:"column:sender_name" json:"sender_name"`
+	SenderPhone      string         `gorm:"column:sender_phone" json:"sender_phone"`
+	SenderAddress    string         `gorm:"column:sender_address" json:"sender_address"`
+	RecipientName    string         `gorm:"column:recipient_name" json:"recipient_name"`
+	RecipientPhone   string         `gorm:"column:recipient_phone" json:"recipient_phone"`
+	RecipientAddress string         `gorm:"column:recipient_address" json:"recipient_address"`
+	Items            []ShipmentItem `gorm:"foreignKey:ShipmentID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"items"`
 }
 
 func main() {
-	// Get Postgres connection string from environment variable
 	dsn := os.Getenv("MASTERDB_URL")
-
-	// Open connection to Postgres using GORM
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		panic(fmt.Sprintf("worker: Failed to connect to Postgres: %v", err))
 	}
 
-	// Automatically migrate schema (creates/updates tables as needed)
-	if err := db.AutoMigrate(&User{}, &Logistic{}, &Shipment{}, &ShipmentItem{}); err != nil {
-		panic(fmt.Sprintf("AutoMigrate error: %v", err))
+	// Auto migrate schema
+	if err := db.AutoMigrate(&User{}, &Shipment{}, &ShipmentItem{}); err != nil {
+		panic(fmt.Sprintf("worker: Failed to migrate schema: %v", err))
 	}
-	fmt.Println(" [worker] Migrated Postgres schema successfully!")
+	log.Println("[worker] Migrated Postgres schema successfully!")
 
-	// Attempt to connect to RabbitMQ with retry logic (max 10 tries, 3 seconds apart)
-	var conn *amqp.Connection
 	rabbitURL := os.Getenv("RABBITMQ_URL")
+
+	var conn *amqp.Connection
 	for i := 0; i < 10; i++ {
 		conn, err = amqp.Dial(rabbitURL)
 		if err == nil {
-			fmt.Println(" [worker] Connected to RabbitMQ successfully!")
+			log.Println("[worker] Connected to RabbitMQ successfully!")
 			break
 		}
-		fmt.Println(" [worker] Waiting for RabbitMQ... retry in 3s")
+		log.Println("[worker] Waiting for RabbitMQ... retry in 3s")
 		time.Sleep(3 * time.Second)
 	}
 	if err != nil {
@@ -96,69 +82,46 @@ func main() {
 	}
 	defer conn.Close()
 
-	// Open a channel on RabbitMQ connection
 	ch, err := conn.Channel()
 	if err != nil {
 		panic(fmt.Sprintf("worker: Failed to open RabbitMQ channel: %v", err))
 	}
 	defer ch.Close()
 
-	// Declare durable queue for user registration events
-	_, err = ch.QueueDeclare(
-		"user.registered", // queue name
-		true,              // durable (survives RabbitMQ restart)
-		false,             // auto-delete
-		false,             // exclusive
-		false,             // no-wait
-		nil,               // arguments
-	)
-	if err != nil {
-		panic(fmt.Sprintf("worker: Failed to declare queue user.registered: %v", err))
-	}
-
-	// Declare durable queue for shipment creation events
-	_, err = ch.QueueDeclare(
-		"shipment.created",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		panic(fmt.Sprintf("worker: Failed to declare queue shipment.created: %v", err))
-	}
-
-	// Start asynchronous goroutine to consume user.registered messages
-	go func() {
-		msgs, err := ch.Consume(
-			"user.registered", // queue
-			"",                // consumer tag, empty for auto-generated
-			true,              // auto-acknowledge
-			false,             // exclusive
-			false,             // no-local (not supported by RabbitMQ)
-			false,             // no-wait
-			nil,               // args
+	// Declare queues
+	queues := []string{"user.registered", "shipment.created", "shipment.updated"}
+	for _, q := range queues {
+		_, err = ch.QueueDeclare(
+			q,
+			true,
+			false,
+			false,
+			false,
+			nil,
 		)
+		if err != nil {
+			panic(fmt.Sprintf("worker: Failed to declare queue %s: %v", q, err))
+		}
+	}
+
+	// Consume user.registered asynchronously
+	go func() {
+		msgs, err := ch.Consume("user.registered", "", true, false, false, false, nil)
 		if err != nil {
 			log.Printf("Error consuming user.registered: %v", err)
 			return
 		}
 		for msg := range msgs {
-			// Define expected JSON payload structure for user registration
 			var payload struct {
 				ID       string `json:"id"`
 				Msisdn   string `json:"msisdn"`
 				Name     string `json:"name"`
 				Username string `json:"username"`
 			}
-			// Parse JSON payload
 			if err := json.Unmarshal(msg.Body, &payload); err != nil {
-				log.Println("Unmarshal failed:", err)
+				log.Println("Unmarshal user.registered failed:", err)
 				continue
 			}
-
-			// Map payload to User struct
 			user := User{
 				ExternalID: payload.ID,
 				Msisdn:     payload.Msisdn,
@@ -166,108 +129,153 @@ func main() {
 				Username:   payload.Username,
 				CreatedAt:  time.Now(),
 			}
-			// Insert user data into Postgres
 			if err := db.Create(&user).Error; err != nil {
-				log.Println("Failed insert user to masterdb:", err)
+				log.Println("Failed to insert user to Postgres:", err)
 			} else {
-				log.Println("Insert user to masterdb:", user.Username)
+				log.Println("Inserted user to Postgres:", user.Username)
 			}
 		}
 	}()
 
-	// Consume shipment.created messages synchronously (blocking)
-	msgs, err := ch.Consume(
-		"shipment.created", // queue
-		"",
-		true,  // auto-acknowledge
-		false, // exclusive
-		false, // no-local
-		false, // no-wait
-		nil,
-	)
-	if err != nil {
-		panic(fmt.Sprintf("Error consume shipment.created: %v", err))
-	}
-	log.Println("Worker started consuming shipment.created")
-
-	// Loop to process each shipment.created message
-	for msg := range msgs {
-		log.Println("Received message on shipment.created")
-
-		// Define expected JSON structure for shipment.created payload
-		var payload struct {
-			LogisticName   string `json:"logistic_name"`
-			TrackingNumber string `json:"tracking_number"`
-			Status         string `json:"status"`
-			Origin         string `json:"origin"`
-			Destination    string `json:"destination"`
-			Sender         struct {
-				Name    string `json:"name"`
-				Phone   string `json:"phone"`
-				Address string `json:"address"`
-			} `json:"sender"`
-			Recipient struct {
-				Name    string `json:"name"`
-				Phone   string `json:"phone"`
-				Address string `json:"address"`
-			} `json:"recipient"`
-			Items []struct {
-				Name     string  `json:"name"`
-				Quantity int     `json:"quantity"`
-				Weight   float64 `json:"weight"`
-			} `json:"items"`
-			Notes  string `json:"notes"`
-			UserID string `json:"user_id"` // User ID of the creator, can be empty
+	// Consume shipment.created asynchronously
+	go func() {
+		msgs, err := ch.Consume("shipment.created", "", true, false, false, false, nil)
+		if err != nil {
+			log.Printf("Error consuming shipment.created: %v", err)
+			return
 		}
+		for msg := range msgs {
+			log.Println("Received message on shipment.created")
+			var payload struct {
+				LogisticName   string `json:"logistic_name"`
+				TrackingNumber string `json:"tracking_number"`
+				Status         string `json:"status"`
+				Origin         string `json:"origin"`
+				Destination    string `json:"destination"`
+				Sender         struct {
+					Name    string `json:"name"`
+					Phone   string `json:"phone"`
+					Address string `json:"address"`
+				} `json:"sender"`
+				Recipient struct {
+					Name    string `json:"name"`
+					Phone   string `json:"phone"`
+					Address string `json:"address"`
+				} `json:"recipient"`
+				Items []struct {
+					Name     string  `json:"name"`
+					Quantity int     `json:"quantity"`
+					Weight   float64 `json:"weight"`
+				} `json:"items"`
+				Notes  string `json:"notes"`
+				UserID string `json:"user_id"`
+			}
 
-		// Log raw message body for debugging
-		log.Println("=== RAW MESSAGE BEGIN ===")
-		log.Printf("%s\n", string(msg.Body))
-		log.Println("=== RAW MESSAGE END ===")
+			if err := json.Unmarshal(msg.Body, &payload); err != nil {
+				log.Println("Unmarshal shipment.created failed:", err)
+				continue
+			}
 
-		// Unmarshal JSON message into the payload struct
-		if err := json.Unmarshal(msg.Body, &payload); err != nil {
-			log.Println("Unmarshal shipment failed:", err)
-			continue // skip to next message on error
+			shipment := Shipment{
+				ID:               payload.TrackingNumber,
+				LogisticName:     payload.LogisticName,
+				TrackingNumber:   payload.TrackingNumber,
+				Status:           payload.Status,
+				Origin:           payload.Origin,
+				Destination:      payload.Destination,
+				SenderName:       payload.Sender.Name,
+				SenderPhone:      payload.Sender.Phone,
+				SenderAddress:    payload.Sender.Address,
+				RecipientName:    payload.Recipient.Name,
+				RecipientPhone:   payload.Recipient.Phone,
+				RecipientAddress: payload.Recipient.Address,
+				Notes:            payload.Notes,
+				UserID:           payload.UserID,
+				CreatedAt:        time.Now(),
+				UpdatedAt:        time.Now(),
+			}
+
+			for _, itm := range payload.Items {
+				shipment.Items = append(shipment.Items, ShipmentItem{
+					Name:       itm.Name,
+					Quantity:   itm.Quantity,
+					Weight:     itm.Weight,
+					ShipmentID: shipment.ID,
+				})
+			}
+
+			if err := db.Session(&gorm.Session{FullSaveAssociations: true}).Create(&shipment).Error; err != nil {
+				log.Println("Failed to insert shipment to Postgres:", err)
+			} else {
+				log.Println("Inserted shipment to Postgres with tracking number:", shipment.TrackingNumber)
+			}
 		}
+	}()
 
-		// Log parsed payload for debugging
-		log.Printf("Parsed payload: %+v\n", payload)
-
-		// Map payload to Shipment struct for saving in DB
-		shipment := Shipment{
-			ID:               payload.TrackingNumber, // Use tracking number as unique ID
-			LogisticName:     payload.LogisticName,
-			TrackingNumber:   payload.TrackingNumber,
-			Status:           payload.Status,
-			Origin:           payload.Origin,
-			Destination:      payload.Destination,
-			SenderName:       payload.Sender.Name,
-			SenderPhone:      payload.Sender.Phone,
-			SenderAddress:    payload.Sender.Address,
-			RecipientName:    payload.Recipient.Name,
-			RecipientPhone:   payload.Recipient.Phone,
-			RecipientAddress: payload.Recipient.Address,
-			Notes:            payload.Notes,
-			UserID:           payload.UserID,
-			CreatedAt:        time.Now(),
+	// Consume shipment.updated asynchronously
+	go func() {
+		msgs, err := ch.Consume("shipment.updated", "", true, false, false, false, nil)
+		if err != nil {
+			log.Printf("Error consuming shipment.updated: %v", err)
+			return
 		}
+		for msg := range msgs {
+			log.Println("Received message on shipment.updated")
 
-		// Append shipment items to the shipment
-		for _, itm := range payload.Items {
-			shipment.Items = append(shipment.Items, ShipmentItem{
-				Name:       itm.Name,
-				Quantity:   itm.Quantity,
-				Weight:     itm.Weight,
-				ShipmentID: shipment.ID, // Link item to shipment via FK
-			})
-		}
+			var payload struct {
+				ID               string         `json:"id"`
+				TrackingNumber   string         `json:"tracking_number"`
+				Status           string         `json:"status"`
+				Origin           string         `json:"origin"`
+				Destination      string         `json:"destination"`
+				Notes            string         `json:"notes"`
+				UserID           string         `json:"user_id"`
+				SenderName       string         `json:"sender_name"`
+				SenderPhone      string         `json:"sender_phone"`
+				SenderAddress    string         `json:"sender_address"`
+				RecipientName    string         `json:"recipient_name"`
+				RecipientPhone   string         `json:"recipient_phone"`
+				RecipientAddress string         `json:"recipient_address"`
+				UpdatedAt        time.Time      `json:"updated_at"`
+			}
 
-		// Insert shipment along with items into the database with full save of associations
-		if err := db.Session(&gorm.Session{FullSaveAssociations: true}).Create(&shipment).Error; err != nil {
-			log.Println("Failed insert shipment to masterdb:", err)
-		} else {
-			log.Println("Insert shipment to masterdb with tracking number:", shipment.TrackingNumber)
+			if err := json.Unmarshal(msg.Body, &payload); err != nil {
+				log.Printf("Failed to unmarshal shipment.updated message: %v", err)
+				continue
+			}
+
+			var shipment Shipment
+			result := db.Where("tracking_number = ?", payload.TrackingNumber).First(&shipment)
+			if result.Error != nil {
+				if result.Error == gorm.ErrRecordNotFound {
+					log.Printf("Shipment not found for update: %s", payload.TrackingNumber)
+					continue
+				}
+				log.Printf("Error finding shipment for update: %v", result.Error)
+				continue
+			}
+
+			shipment.Status = payload.Status
+			shipment.Notes = payload.Notes
+			shipment.Origin = payload.Origin
+			shipment.Destination = payload.Destination
+			shipment.UserID = payload.UserID
+			shipment.SenderName = payload.SenderName
+			shipment.SenderPhone = payload.SenderPhone
+			shipment.SenderAddress = payload.SenderAddress
+			shipment.RecipientName = payload.RecipientName
+			shipment.RecipientPhone = payload.RecipientPhone
+			shipment.RecipientAddress = payload.RecipientAddress
+			shipment.UpdatedAt = time.Now()
+
+			if err := db.Save(&shipment).Error; err != nil {
+				log.Printf("Failed to update shipment in Postgres: %v", err)
+			} else {
+				log.Printf("Successfully updated shipment in Postgres: %s", shipment.TrackingNumber)
+			}
 		}
-	}
+	}()
+
+	// Prevent main from exiting so all goroutines keep running
+	select {}
 }
