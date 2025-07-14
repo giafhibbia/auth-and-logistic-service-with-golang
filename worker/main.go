@@ -1,3 +1,7 @@
+// Worker service for logistics microservices.
+// 
+// This service listens to RabbitMQ queues and automatically inserts or updates
+// user and shipment data in PostgreSQL.
 package main
 
 import (
