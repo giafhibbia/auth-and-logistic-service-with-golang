@@ -39,7 +39,7 @@ This repository contains microservices for authentication and logistics, using *
 ## **How to Run Locally**
 
 1. **Clone this repository**:\
-   git clone [https\://github.com/yourusername/orderfaz.git\](https://github.com/giafhibbia/logistics-auth-service.git)
+   git clone https\://github.com/yourusername/orderfaz.git\
    cd orderfaz\
    \
 
