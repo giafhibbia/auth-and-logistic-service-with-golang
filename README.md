@@ -1,4 +1,4 @@
-# **Orderfaz Microservices Project**
+# **Microservices Project**
 
 This repository contains microservices for authentication and logistics, using **MongoDB**, **PostgreSQL**, **RabbitMQ**, and **Go**. All services run in Docker containers for easy setup and local development.
 
@@ -39,7 +39,7 @@ This repository contains microservices for authentication and logistics, using *
 ## **How to Run Locally**
 1. **Clone this repository**:\
    git clone https\://github.com/giafhibbia/logistics-auth-service.git\
-   cd orderfaz\
+   cd directory-project\
    \
 
 2. **Start all services**:\
